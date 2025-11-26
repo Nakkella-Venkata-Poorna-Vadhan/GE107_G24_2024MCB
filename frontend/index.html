@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoRa Localization System | v2.1</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #020617;
+            background-image: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)),
+                url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z' fill='%233b82f6' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+
+        .system-panel {
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            box-shadow: 0 0 15px -3px rgba(59, 130, 246, 0.15);
+            position: relative;
+        }
+
+        .system-panel::before { content: ''; position: absolute; top: -1px; left: -1px; width: 10px; height: 10px; border-top: 2px solid #60a5fa; border-left: 2px solid #60a5fa; z-index: 10; }
+        .system-panel::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 10px; height: 10px; border-bottom: 2px solid #60a5fa; border-right: 2px solid #60a5fa; z-index: 10; }
+
+        .system-card { background: rgba(30, 58, 138, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); transition: all 0.2s ease; }
+        
+        .sys-input {
+            background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #60a5fa; font-family: 'Roboto Mono', monospace; font-size: 0.8rem; padding: 4px 8px; width: 100%; outline: none;
+            transition: all 0.3s ease;
+        }
+        .sys-input:focus { border-color: #60a5fa; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+        .sys-input:disabled { opacity: 0.5; background: rgba(2, 6, 23, 0.5); border-color: rgba(59, 130, 246, 0.1); cursor: not-allowed; }
+
+        /* Generic Modal Styles */
+        .modal-overlay { transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none; opacity: 0; transform: scale(0.95); }
+        .modal-overlay.active { pointer-events: auto; opacity: 1; transform: scale(1); }
+
+        .tab-btn { opacity: 0.5; border-bottom: 2px solid transparent; transition: all 0.2s; }
+        .tab-btn:hover { opacity: 0.8; }
+        .tab-btn.active { opacity: 1; border-bottom: 2px solid #60a5fa; background: linear-gradient(to top, rgba(59,130,246,0.1), transparent); }
+
+        /* New Navigation & Hover Effects */
+        .nav-btn-main {
+            position: relative; overflow: hidden; transition: all 0.3s ease;
+            background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        /* .nav-btn-main:hover { REMOVED - Replaced by global hover scale below
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #60a5fa;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+            transform: translateY(-1px);
+        } */
+
+        /* Description Modal Styling */
+        .desc-tab { text-align: left; padding: 10px; cursor: pointer; border-left: 2px solid transparent; transition: all 0.2s; opacity: 0.6; }
+        .desc-tab:hover { background: rgba(59, 130, 246, 0.1); opacity: 0.8; }
+        .desc-tab.active { border-left: 2px solid #60a5fa; background: linear-gradient(to right, rgba(59,130,246,0.1), transparent); opacity: 1; color: #60a5fa; font-weight: bold; }
+        .desc-content { display: none; animation: fadeIn 0.3s ease; }
+        .desc-content.active { display: block; }
+        
+        /* Team Profile Image */
+        .profile-img { 
+            width: 80px; height: 80px; border-radius: 50%; object-fit: cover; 
+            border: 2px solid #1e293b; box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        /* UPDATED TEAM CARD DYNAMICS */
+        .team-card {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy transition */
+            position: relative;
+            z-index: 1;
+            overflow: hidden;
+        }
+        .team-card:hover {
+            transform: scale(1.25) translateY(-10px); /* Enlarges significantly */
+            z-index: 50; /* Pops to front */
+            background-color: rgba(15, 23, 42, 0.95);
+            border-color: #60a5fa;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+        .team-card:hover .profile-img {
+            border-color: #60a5fa;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+        }
+        /* Social Links Container - Hidden by default */
+        .social-links {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.4s ease;
+            margin-top: 0;
+        }
+        .team-card:hover .social-links {
+            max-height: 50px; /* Reveal */
+            opacity: 1;
+            margin-top: 10px;
+        }
+
+        /* Lightbox for Images */
+        #imageModal {
+            /* Ensure it sits on top of everything */
+            z-index: 9999; 
+        }
+
+        /* --- NEW DYNAMIC HOVER EFFECTS --- */
+        /* General transition for transform on interactive elements */
+        button, .tab-btn, .desc-tab, .nav-btn-main, .social-links a, .profile-img {
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* Navbar Buttons */
+        #btn-mock:hover, #btn-config:hover {
+            transform: scale(1.1);
+        }
+
+        /* Navigation Main Buttons */
+        .nav-btn-main:hover {
+            /* Replaces previous hover effect with scale */
+            transform: scale(1.05);
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #60a5fa;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Tab Buttons (Alpha, Beta, Gamma) */
+        .tab-btn:hover {
+            opacity: 1;
+            transform: scale(1.05);
+        }
+
+        /* Description Tabs in Modal */
+        .desc-tab:hover {
+            background: rgba(59, 130, 246, 0.1);
+            opacity: 0.8;
+            transform: scale(1.02) translateX(5px); /* Slight shift right and scale */
+        }
+
+        /* Social Icons */
+        .social-links a:hover {
+            transform: scale(1.2);
+        }
+
+        /* Close Buttons */
+        .btn-close:hover {
+            transform: scale(1.1) rotate(90deg); /* Rotate for fun, scale for request */
+        }
+
+        /* Download Button Specific Hover */
+        .download-btn:hover {
+            background-color: rgba(30, 58, 138, 0.8); /* Darker blue on hover */
+            border-color: #60a5fa;
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        #map-container:fullscreen {
+            background-color: #020617; padding: 20px; display: flex; flex-direction: column; justify-content: center;
+        }
+        #map-container:fullscreen canvas { object-fit: contain; }
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; margin-top: -6px; box-shadow: 0 0 10px #3b82f6; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #1e293b; border-radius: 2px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="h-16 system-panel flex items-center justify-between px-6 z-50 border-b border-blue-500/30">
+        <!-- Left: Logo & Title -->
+        <div class="flex items-center space-x-4">
+            <i data-lucide="radio-tower" class="text-blue-400 w-8 h-8"></i>
+            <div>
+                <h1 class="text-2xl font-bold tracking-wider text-white leading-none">LORA <span class="text-blue-500">LOCALIZATION</span></h1>
+                <p class="text-[12px] text-blue-300/70 uppercase tracking-[0.2em] mt-1">Wireless Localization with Error Reduction</p>
+            </div>
+        </div>
+
+        <!-- Center: New Navigation -->
+        <div class="flex items-center space-x-4">
+            <button id="btn-open-info" class="nav-btn-main px-6 py-2 text-xs font-bold text-white tracking-widest uppercase rounded flex items-center">
+                <i data-lucide="file-text" class="w-4 h-4 mr-2 text-blue-400"></i> Project Info
+            </button>
+            <button id="btn-open-team" class="nav-btn-main px-6 py-2 text-xs font-bold text-white tracking-widest uppercase rounded flex items-center">
+                <i data-lucide="users" class="w-4 h-4 mr-2 text-blue-400"></i> Team
+            </button>
+        </div>
+
+        <!-- Right: Controls -->
+        <div class="flex items-center space-x-4">
+            <!-- New Download Report Button -->
+            <a href="./assets/Project Report.pdf" download="Project Report.pdf" class="download-btn px-4 py-1 text-[12px] font-bold tracking-wider bg-slate-800 text-blue-300 border border-blue-500/50 uppercase transition-all flex items-center rounded-sm">
+                <i data-lucide="file-down" class="w-4 h-4 mr-2 text-blue-400"></i> Report
+            </a>
+
+            <button id="btn-mock" class="px-3 py-1 text-[15px] font-bold tracking-wider bg-slate-800 text-slate-400 border border-slate-600 uppercase hover:text-white transition-colors">Simulate: OFF</button>
+            <button id="btn-config" class="p-2 text-blue-400 hover:text-white hover:rotate-90 transition-all duration-300 bg-slate-900/50 rounded-full border border-transparent hover:border-blue-500/50"><i data-lucide="settings" class="w-5 h-5"></i></button>
+            <div class="flex items-center space-x-2 bg-blue-950/30 px-3 py-1 border border-blue-500/20 rounded">
+                <span id="status-dot" class="w-2 h-2 bg-red-500 shadow-[0_0_10px_red] rounded-full"></span>
+                <span id="status-text" class="text-[15px] font-bold text-slate-400 uppercase">OFFLINE</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 1. CONFIG MODAL -->
+    <div id="config-modal" class="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="system-panel w-[95%] max-w-[600px] p-6 shadow-2xl bg-slate-900 border border-blue-500 overflow-y-auto overflow-x-hidden max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6 border-b border-blue-500/30 pb-2">
+                <h2 class="text-[15px] font-bold text-white tracking-widest flex items-center"><i data-lucide="sliders" class="w-4 h-4 mr-2 text-blue-400"></i> SYSTEM CALIBRATION</h2>
+                <button class="btn-close text-slate-400 hover:text-red-400"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <!-- Visualization -->
+            <div class="mb-4 p-3 bg-slate-800/50 border border-blue-500/30">
+                <h3 class="text-[15px] font-bold text-emerald-400 uppercase mb-3 tracking-widest border-b border-emerald-500/20 pb-1">Visualization</h3>
+                <div class="flex items-center space-x-4 mb-4">
+                    <label class="flex items-center space-x-2 cursor-pointer"><input type="radio" name="scaleMode" value="auto" checked class="accent-blue-500" id="radio-auto"><span class="text-xs text-slate-300 uppercase font-bold">Auto Fit (Tight)</span></label>
+                    <label class="flex items-center space-x-2 cursor-pointer"><input type="radio" name="scaleMode" value="manual" class="accent-blue-500" id="radio-manual"><span class="text-xs text-slate-300 uppercase font-bold">Manual Zoom</span></label>
+                </div>
+                <div class="flex items-center space-x-3 opacity-50 transition-opacity" id="manual-controls">
+                    <span class="text-[12px] text-slate-500 uppercase w-16">Zoom Lvl</span>
+                    <input type="range" min="10" max="150" value="60" id="cfg-scale-val" class="flex-grow h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer" disabled>
+                    <span class="text-[12px] text-blue-400 font-mono w-10 text-right" id="scale-display">Auto</span>
+                </div>
+            </div>
+            <!-- Path Loss -->
+            <div class="mb-4 p-3 bg-blue-900/10 border border-blue-500/20">
+                <h3 class="text-[15px] font-bold text-blue-300 uppercase mb-3 tracking-widest border-b border-blue-500/20 pb-1">Path Loss Constants</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-[13px] text-slate-400 uppercase">Ref Power (A)</label><input type="number" step="0.01" id="cfg-A" class="sys-input text-white" value="-105.00"></div>
+                    <div><label class="text-[13px] text-slate-400 uppercase">Env Factor (n)</label><input type="number" step="0.01" id="cfg-n" class="sys-input text-white" value="1.90"></div>
+                </div>
+            </div>
+            <!-- Anchors -->
+            <div class="mb-6">
+                <div class="flex justify-between items-end mb-3">
+                    <h3 class="text-[15px] font-bold text-blue-300 uppercase tracking-widest">Anchor Configuration</h3>
+                    <div class="flex space-x-2 bg-slate-800 p-1 rounded">
+                        <button id="mode-coords" class="px-2 py-0.5 text-[13px] font-bold bg-blue-600 text-white rounded">COORDINATES</button>
+                        <button id="mode-dist" class="px-2 py-0.5 text-[13px] font-bold text-slate-400 hover:text-white">DISTANCES</button>
+                    </div>
+                </div>
+                <div id="group-coords" class="grid grid-cols-3 gap-2 mb-2">
+                    <div class="text-[13px] text-slate-500 text-center uppercase">Module</div><div class="text-[13px] text-slate-500 text-center uppercase">X-Pos</div><div class="text-[13px] text-slate-500 text-center uppercase">Y-Pos</div>
+                    <span class="text-[15px] font-mono text-blue-400 text-center self-center">ALPHA (1)</span><input type="number" step="0.01" id="cfg-a1-x" class="sys-input text-center input-coord" value="0.00"><input type="number" step="0.01" id="cfg-a1-y" class="sys-input text-center input-coord" value="0.00">
+                    <span class="text-[15px] font-mono text-purple-400 text-center self-center">BETA (2)</span><input type="number" step="0.01" id="cfg-a2-x" class="sys-input text-center input-coord" value="10.00"><input type="number" step="0.01" id="cfg-a2-y" class="sys-input text-center input-coord" value="0.00">
+                    <span class="text-[15px] font-mono text-amber-400 text-center self-center">GAMMA (3)</span><input type="number" step="0.01" id="cfg-a3-x" class="sys-input text-center input-coord" value="5.00"><input type="number" step="0.01" id="cfg-a3-y" class="sys-input text-center input-coord" value="10.00">
+                </div>
+                <div id="group-dist" class="grid grid-cols-2 gap-4 mb-2 p-2 bg-slate-800/30 border border-dashed border-slate-600">
+                    <div class="col-span-2 text-[11px] text-slate-400 italic text-center">Calculated Distances (Updates Automatically)</div>
+                    <div><label class="text-[15px] text-blue-400 uppercase">Dist A1 to A2 (m)</label><input type="number" step="0.01" id="d-12" class="sys-input text-center input-dist" value="10.00" disabled></div>
+                    <div><label class="text-[15px] text-purple-400 uppercase">Dist A2 to A3 (m)</label><input type="number" step="0.01" id="d-23" class="sys-input text-center input-dist" value="11.18" disabled></div>
+                    <div class="col-span-2 w-1/2 mx-auto"><label class="text-[15px] text-amber-400 uppercase">Dist A3 to A1 (m)</label><input type="number" step="0.01" id="d-31" class="sys-input text-center input-dist" value="11.18" disabled></div>
+                </div>
+            </div>
+            <!-- Filter -->
+            <div class="mb-4">
+                <h3 class="text-[15px] font-bold text-slate-500 uppercase mb-2">Filter Tuning</h3>
+                <div class="flex space-x-4">
+                    <div class="w-1/2"><label class="text-[15px] text-slate-500">PROCESS NOISE (R)</label><input type="number" step="0.01" id="cfg-r" class="sys-input" value="0.01"></div>
+                    <div class="w-1/2"><label class="text-[15px] text-slate-500">MEASUREMENT NOISE (Q)</label><input type="number" step="0.01" id="cfg-q" class="sys-input" value="2.00"></div>
+                </div>
+            </div>
+            <button id="btn-save-config" class="w-full py-2 bg-blue-600 text-white hover:bg-blue-500 transition-all uppercase text-xs font-bold tracking-widest shadow-[0_0_15px_#2563eb]">Update System Parameters</button>
+        </div>
+    </div>
+
+    <!-- 2. DESCRIPTION MODAL -->
+    <div id="info-modal" class="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="system-panel w-[1000px] h-[600px] flex shadow-2xl bg-slate-900 border border-blue-500">
+            <!-- Left Sidebar -->
+            <div class="w-1/4 bg-slate-900/80 border-r border-blue-500/30 flex flex-col pt-4">
+                <h2 class="text-[15px] font-bold text-white tracking-widest px-4 mb-6 border-b border-blue-500/20 pb-4">
+                    <i data-lucide="book-open" class="w-5 h-5 inline mr-2 text-blue-400"></i> WRITE-UP
+                </h2>
+                <div class="flex-grow space-y-1">
+                    <div class="desc-tab active" onclick="showDesc('overview', this)">Project Overview</div>
+                    <div class="desc-tab" onclick="showDesc('lora', this)">About LoRa</div>
+                    <div class="desc-tab" onclick="showDesc('hardware', this)">Hardware Setup</div>
+                    <div class="desc-tab" onclick="showDesc('codes', this)">Sender and Receiver Codes</div>
+                    <div class="desc-tab" onclick="showDesc('rssi', this)">RSSI Path Loss</div>
+                    <div class="desc-tab" onclick="showDesc('kalman', this)">Kalman Filter</div>
+                    <div class="desc-tab" onclick="showDesc('trilat', this)">2D Trilateration</div>
+                    <div class="desc-tab" onclick="showDesc('videos', this)">Videos</div>
+                </div>
+            </div>
+            
+            <!-- Right Content Wrapper (Fixed Layout) -->
+            <div class="w-3/4 bg-slate-950/50 relative flex flex-col">
+                <!-- Fixed Close Button -->
+                <button class="btn-close absolute top-4 right-4 text-slate-400 hover:text-red-400 z-50 bg-slate-900/50 rounded-full p-1"><i data-lucide="x" class="w-6 h-6"></i></button>
+                
+                <!-- Scrollable Container -->
+                <div id="desc-scroll-container" class="flex-1 overflow-y-auto relative scroll-smooth">
+                    
+                    <!-- Project Overview -->
+                    <div id="desc-overview" class="desc-content active p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-blue-500">
+                            <h3 class="text-2xl font-bold text-white">Project Overview</h3>
+                        </div>
+                        <p class="text-xl text-slate-200 mb-6 leading-relaxed text-justify">
+                            Wireless localization has become an essential requirement across a wide range of modern applications, from tracking livestock in remote farmlands to locating missing individuals during search-and-rescue missions. However, traditional tracking methods such as GPS are often unreliable in environments with weak satellite visibility, and they also consume significant power. In many real-world deployment scenarios—such as dense forests, indoor buildings, underground regions, and large agricultural spaces—a lightweight, low-power, long-range alternative becomes necessary. Our project was built precisely to address this need. It presents a complete wireless localization system that determines the real-time position of a mobile node by using three fixed reference nodes and the communication technology known as LoRa. Instead of relying on GPS satellites, our system estimates distance using the received signal strength of LoRa packets and then applies mathematical models to compute the coordinates of the mobile node.
+                        </p>
+                        <p class="text-xl text-slate-200 mb-4 leading-relaxed text-justify">
+                            The core idea of this project is to establish a self-contained tracking framework that does not depend on any external infrastructure such as cellular networks, Wi-Fi, or GNSS. By combining signal processing, wireless communication, and mathematical modelling, the system demonstrates how long-range IoT technologies can be used for real-world localization with meaningful accuracy. The project also tackles the challenging nature of RSSI-based distance estimation, which is traditionally unstable due to environmental noise, multipath reflections, antenna orientation differences, and hardware inconsistencies. These challenges allowed us to incorporate concepts like calibration, filtering, and error modeling into our system. Ultimately, the project serves as a complete demonstration of how mathematics and engineering can work together to solve a practical problem: locating a device in space using only wireless signals from LoRa modules.
+                        </p>
+                    </div>
+
+                    <!-- About LoRa -->
+                    <div id="desc-lora" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-purple-500">
+                            <h3 class="text-2xl font-bold text-white">About LoRa Technology</h3>
+                        </div>
+                        <p class="text-xl text-slate-200 mb-6 leading-relaxed text-justify">
+                            LoRa, short for Long Range, is a wireless modulation technique designed specifically for IoT applications where devices must communicate over long distances while consuming extremely low power. It uses a technology known as Chirp Spread Spectrum (CSS), which spreads the signal across a wide bandwidth using frequency sweeps. This makes LoRa very resistant to interference, capable of transmitting across several kilometers, and highly energy efficient. These features make it ideal for sensing and tracking applications, especially in outdoor environments such as farms, warehouses, and remote locations where traditional wireless systems fail.
+                        </p>
+                        <p class="text-xl text-slate-200 mb-4 leading-relaxed text-justify">
+                            In the context of this project, LoRa enables communication between one mobile node and three fixed anchor nodes. Each anchor node is built using an Arduino UNO and an SX1278 LoRa module operating at 433 MHz. The mobile unit receive packets transmitted by the anchor nodes and measure their RSSI values. The reliability and long-range nature of LoRa communication allow our system to operate without any dependency on Wi-Fi or cellular networks. The use of simple DIY wire antennas ensures cost-effectiveness, while the low-power characteristics of LoRa allow the mobile node to operate for long durations on battery power. By deploying the anchors at known positions and using LoRa’s stable communication abilities, we are able to collect signal strength data that forms the foundation of the localization calculations performed by the system.
+                        </p>
+                    </div>
+
+                    <!-- Hardware Setup -->
+                    <div id="desc-hardware" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-green-500">
+                            <h3 class="text-2xl font-bold text-white">Hardware Setup</h3>
+                        </div>
+                        <p class="text-xl text-slate-200 mb-6 leading-relaxed text-justify">
+                            The hardware architecture of our localization system consists of four main LoRa nodes: three fixed anchor nodes and one mobile node. Each anchor node is built using an Arduino UNO microcontroller paired with an SX1278 LoRa module operating at 433 MHz. The anchors are powered by a stable 3.3V supply and are equipped with wire antennas to facilitate long-range communication. These anchors are strategically placed at known coordinates within the deployment area to form a reference framework for localization. The mobile node, also based on an Arduino UNO and SX1278 module, is battery-powered for portability. It continuously scans for LoRa packets transmitted by the anchor nodes and measures the RSSI values of the received signals. The mobile node processes these RSSI readings to estimate distances to each anchor using a calibrated path loss model. All nodes are configured to operate on the same frequency and spreading factor to ensure reliable communication. The collected data is then sent to a central server via serial communication for further processing, including filtering and trilateration calculations. This hardware setup provides a cost-effective and efficient platform for implementing wireless localization using LoRa technology.
+                        </p>
+                        <!-- 📡 Full Width Image With Hover & Click-to-Expand -->
+                        <div class="mt-6">
+                            <img src="./assets/Module.png"
+                            alt="Hardware Setup Image"
+                            class="w-full rounded-lg border border-slate-700/40 shadow-lg cursor-pointer
+                                transition-transform duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                            onclick="openImageModal(this.src)">
+                        </div>
+                    </div>
+
+                    <!-- Codes -->
+                    <div id="desc-codes" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-pink-500">
+                            <h3 class="text-2xl font-bold text-white">Sender and Receiver Codes</h3>
+                        </div>
+
+                        <!-- 📡 SENDER CODE BLOCK -->
+                        <div class="relative bg-slate-900/60 border border-pink-500/30 p-4 rounded mb-6">
+                            <button onclick="copyCode('sender-code')" 
+                                class="absolute top-2 right-2 text-[10px] bg-pink-600 hover:bg-pink-500 text-white px-2 py-1 rounded shadow">
+                                COPY
+                            </button>
+
+                            <pre id="sender-code" class="text-pink-300 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
+/* --- SENDER (ANCHOR) CODE --- */
+#include &lt;SPI.h&gt;
+#include &lt;LoRa.h&gt;
+
+void setup() {
+    Serial.begin(9600);
+    LoRa.begin(433E6);           // Frequency 433 MHz
+    LoRa.setTxPower(20);         // Transmission power
+    LoRa.setSpreadingFactor(12); // SF7-SF12
+}
+
+void loop() {
+    LoRa.beginPacket();
+    LoRa.print("ANCHOR_1");      // Change to ANCHOR_2, ANCHOR_3 for other anchors
+    LoRa.endPacket();
+    delay(1000);                 // Broadcast every 1 second
+}
+                            </pre>
+                        </div>
+
+                        <!-- 📥 RECEIVER CODE BLOCK -->
+                        <div class="relative bg-slate-900/60 border border-pink-500/30 p-4 rounded">
+                            <button onclick="copyCode('receiver-code')" 
+                                class="absolute top-2 right-2 text-[10px] bg-pink-600 hover:bg-pink-500 text-white px-2 py-1 rounded shadow">
+                                COPY
+                            </button>
+
+                            <pre id="receiver-code" class="text-pink-300 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
+/* --- RECEIVER (MOBILE NODE) CODE --- */
+#include &lt;SPI.h&gt;
+#include &lt;LoRa.h&gt;
+
+unsigned long lastReceiveTimeA1 = 0;
+unsigned long lastReceiveTimeA2 = 0;
+unsigned long lastReceiveTimeA3 = 0;
+
+int rssiA1 = 0, rssiA2 = 0, rssiA3 = 0;
+int latA1 = 0, latA2 = 0, latA3 = 0;
+
+bool gotA1 = false, gotA2 = false, gotA3 = false;
+
+void setup() {
+    Serial.begin(9600);
+    LoRa.begin(433E6);
+}
+
+void loop() {
+    int packetSize = LoRa.parsePacket();
+    if (packetSize) {
+        String id = LoRa.readString();
+        int rssi = LoRa.packetRssi();
+        unsigned long now = millis();
+
+        if (id == "ANCHOR_1") {
+            rssiA1 = rssi;
+            latA1 = now - lastReceiveTimeA1;
+            lastReceiveTimeA1 = now;
+            gotA1 = true;
+        }
+        else if (id == "ANCHOR_2") {
+            rssiA2 = rssi;
+            latA2 = now - lastReceiveTimeA2;
+            lastReceiveTimeA2 = now;
+            gotA2 = true;
+        }
+        else if (id == "ANCHOR_3") {
+            rssiA3 = rssi;
+            latA3 = now - lastReceiveTimeA3;
+            lastReceiveTimeA3 = now;
+            gotA3 = true;
+        }
+
+        // When all 3 anchors received, output combined JSON line
+        if (gotA1 && gotA2 && gotA3) {
+            Serial.print("JSON_DATA:");
+            Serial.print(rssiA1); Serial.print(":");
+            Serial.print(latA1);  Serial.print(":");
+            Serial.print(rssiA2); Serial.print(":");
+            Serial.print(latA2);  Serial.print(":");
+            Serial.print(rssiA3); Serial.print(":");
+            Serial.println(latA3);
+
+            gotA1 = gotA2 = gotA3 = false;
+        }
+    }
+}
+                            </pre>
+                        </div>
+                    </div>
+
+                    <!-- RSSI Path Loss -->
+                    <div id="desc-rssi" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-amber-500">
+                            <h3 class="text-2xl font-bold text-white">RSSI & Path Loss Model</h3>
+                        </div>
+                        <p class="text-xl text-slate-200 mb-6 leading-relaxed text-justify">
+                            In wireless communication, the strength of a received signal decreases as the distance between the transmitter and the receiver increases. This decrease follows a predictable trend known as path loss. To estimate distance, our project uses a mathematical model called the log-distance path loss model, which expresses the relationship between RSSI (Received Signal Strength Indicator) and the physical distance separating two LoRa nodes. The model is written in the form:
+                            <br><br>
+                            <strong class="block text-center text-amber-400 text-lg font-mono bg-slate-900/50 p-2 rounded border border-amber-500/30">RSSI = A – 10n log₁₀(d)</strong>
+                            <br>
+                            Here, A represents the RSSI value measured at a distance of 1 meter from the transmitter, n is the environmental path loss exponent that captures conditions such as obstacles, reflections, and air absorption, and d is the unknown distance we aim to calculate. To convert RSSI readings back to distance, we rearrange the equation mathematically. However, this process is highly sensitive to noise because RSSI values tend to fluctuate significantly even when the transmitter is stationary.
+                        </p>
+                        <p class="text-xl text-slate-200 mb-4 leading-relaxed text-justify">
+                            To use this model accurately, our system requires calibration. This involves taking real-world RSSI measurements at known distances and determining suitable values for the constants A and n. Once calibrated, the model provides approximate distance values that act as the input for trilateration. Even though the model is imperfect due to the unpredictable nature of radio waves, it forms the mathematical backbone of most RSSI-based localization systems. In our implementation, the raw RSSI values are first calibrated, then filtered through a noise-reduction algorithm, and finally converted into distances, which are used to compute the real-time position of the mobile node.
+                        </p>
+                    </div>
+
+                    <!-- Kalman Filter -->
+                    <div id="desc-kalman" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-emerald-500">
+                            <h3 class="text-2xl font-bold text-white">Kalman Filter</h3>
+                        </div>
+                        <p class="text-xl text-slate-200 mb-6 leading-relaxed text-justify">
+                            One of the biggest challenges of RSSI-based localization is the natural instability of RSSI values. Even in static conditions—when both nodes remain completely still—the RSSI can fluctuate by several decibels due to multipath reflections, antenna orientation differences, temperature changes, and random environmental noise. These fluctuations create large errors when converting RSSI into distance. To address this issue, our system uses a 1-dimensional Kalman Filter to stabilize and smooth the incoming RSSI readings. The Kalman Filter is a mathematical algorithm that continuously estimates the true value of a noisy signal by combining predictions with new measurements. It works in two stages: first it predicts the next expected value based on prior information, and then it corrects that prediction using the new RSSI measurement. Over time, this process produces a filtered RSSI value that is far more stable and reliable than the raw reading.
+                            <br><br>
+                            <!-- Updated Code Logic Box -->
+                            <div class="bg-slate-900/80 p-4 rounded border border-emerald-500/30 font-mono text-xs text-emerald-300 overflow-x-auto shadow-inner">
+                                <div class="mb-2 text-slate-500 italic">// Initialize: p = error covariance, x = estimate</div>
+                                <div class="mb-2">const R = Process_Noise; <span class="text-slate-600">// Noise in the system</span></div>
+                                <div class="mb-4">const Q = Measurement_Noise; <span class="text-slate-600">// Noise in RSSI readings</span></div>
+                                
+                                <div class="mb-1 text-purple-400 font-bold">function update(rssi_measurement) {</div>
+                                <div class="pl-4 mb-1"><span class="text-slate-500">// 1. Prediction Step</span></div>
+                                <div class="pl-4 mb-2">p = p + R;</div>
+                                
+                                <div class="pl-4 mb-1"><span class="text-slate-500">// 2. Calculate Kalman Gain</span></div>
+                                <div class="pl-4 mb-2">k = p / (p + Q);</div>
+                                
+                                <div class="pl-4 mb-1"><span class="text-slate-500">// 3. Update Estimate</span></div>
+                                <div class="pl-4 mb-2">x = x + k * (rssi_measurement - x);</div>
+                                
+                                <div class="pl-4 mb-1"><span class="text-slate-500">// 4. Update Error Covariance</span></div>
+                                <div class="pl-4 mb-2">p = (1 - k) * p;</div>
+                                
+                                <div class="pl-4 text-blue-400">return x;</div>
+                                <div class="text-purple-400 font-bold">}</div>
+                            </div>
+                            <br>
+                        </p>
+                        <p class="text-xl text-slate-200 mb-4 leading-relaxed text-justify">
+                            The strength of the Kalman Filter lies in its ability to intelligently balance trust between past data and current measurements. When the incoming RSSI readings are noisy or erratic, the filter naturally reduces their influence. When the measurements become stable, the filter adapts and follows them more closely. This dynamic adjustment significantly improves the accuracy of distance calculations, which in turn strengthens the reliability of the trilateration step. Without filtering, even small fluctuations in RSSI could result in large jumps in the estimated location. With the Kalman Filter, the system achieves smooth, consistent, real-time localization that feels natural and visually stable on the interface.
+                        </p>
+                    </div>
+
+                    <!-- 2D Trilateration -->
+                    <div id="desc-trilat" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-blue-400">
+                            <h3 class="text-2xl font-bold text-white">2D Trilateration</h3>
+                        </div>
+                        <p class="text-xl text-slate-200 mb-6 leading-relaxed text-justify">
+                            Once the distances to the three anchor nodes are computed, the next step is to determine the exact position of the mobile node in two-dimensional space. Trilateration is the mathematical process that makes this possible. Conceptually, each estimated distance represents the radius of a circle centered at the position of one anchor. The true location of the mobile node is the point where all three circles intersect. In real-world deployments, these circles rarely meet at a single perfect point due to noise and measurement errors. However, the equations of trilateration allow us to compute the best possible intersection point by solving a system of two simultaneous equations derived from the three circle formulas.
+                            <br><br>
+                            <strong class="block text-center text-blue-400 text-lg font-mono bg-slate-900/50 p-2 rounded border border-blue-500/30">(x - xᵢ)² + (y - yᵢ)² = dᵢ²</strong>
+                            <br>
+                        </p>
+                        <p class="text-xl text-slate-200 mb-4 leading-relaxed text-justify">
+                            In our implementation, the coordinates of the three anchors are known and fixed. The system uses the filtered distances (produced after Kalman processing) and substitutes them into the trilateration equations. These equations are solved mathematically to obtain an (x, y) coordinate that represents the estimated position of the mobile node. Because trilateration is sensitive to errors, even small improvements in distance accuracy lead to significantly better position estimates. By combining the RSSI path loss model, calibration, and Kalman filtering, our trilateration step produces a stable and visually accurate real-time position display on the website’s map interface. The result is a complete end-to-end LoRa-based localization system capable of tracking movement smoothly using only wireless signal strength and mathematical modelling.
+                        </p>
+                    </div>
+
+                    <!-- Videos -->
+                    <div id="desc-videos" class="desc-content p-8">
+                        <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-red-500">
+                            <h3 class="text-2xl font-bold text-white">Demonstration Videos</h3>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. TEAM MODAL -->
+    <div id="team-modal" class="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <!-- Adjusted width: w-[95%] max-w-[1300px] for responsiveness -->
+        <div class="system-panel w-[95%] max-w-[1300px] p-8 shadow-2xl bg-slate-900 border border-blue-500 flex flex-col items-center overflow-y-auto overflow-x-hidden max-h-[90vh]">
+            <div class="w-full flex justify-between items-start mb-8 border-b border-blue-500/30 pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white tracking-[0.2em] mb-1">PROJECT TEAM</h2>
+                    <p class="text-blue-400 text-[15px] uppercase font-bold">LoRa Localization Group</p>
+                </div>
+                <button class="btn-close text-slate-400 hover:text-red-400"><i data-lucide="x" class="w-8 h-8"></i></button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 w-full">
+                <!-- Member 1 -->
+                <div class="team-card bg-slate-800/40 p-4 rounded border border-blue-500/20 flex flex-col items-center text-center group hover:bg-slate-800/80">
+                    <img src="./assets/Member1.JPG" alt="Member 1" class="profile-img mb-4 bg-slate-700" onclick="openImageModal(this.src)">
+                    <h3 class="text-white font-bold text-lg mb-1">N V POORNA VADHAN</h3>
+                    <div class="w-full h-[1px] bg-blue-500/30 mb-2"></div>
+                    <p class="text-slate-400 text-xs">2024MCB1306</p>
+                    <p class="text-slate-500 text-[10px] mt-1 hover:text-blue-400 cursor-pointer">Email: 2024mcb1306@iitrpr.ac.in</p>
+                    <!-- Social Links -->
+                    <div class="social-links flex justify-center space-x-3 w-full">
+                        <a href="#" class="text-slate-400 hover:text-blue-400"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-pink-400"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-white"><i data-lucide="github" class="w-4 h-4"></i></a>
+                    </div>
+                </div>
+
+                <!-- Member 2 -->
+                <div class="team-card bg-slate-800/40 p-4 rounded border border-purple-500/20 flex flex-col items-center text-center group hover:bg-slate-800/80">
+                    <img src="./assets/Member2.JPG" alt="Member 2" class="profile-img mb-4 bg-slate-700" onclick="openImageModal(this.src)">
+                    <h3 class="text-white font-bold text-lg mb-1">MEKALA SATHWIK VARMA</h3>
+                    <div class="w-full h-[1px] bg-purple-500/30 mb-2"></div>
+                    <p class="text-slate-400 text-xs">2024MCB1305</p>
+                    <p class="text-slate-500 text-[10px] mt-1 hover:text-purple-400 cursor-pointer">Email: 2024mcb1305@iitrpr.ac.in</p>
+                    <div class="social-links flex justify-center space-x-3 w-full">
+                        <a href="#" class="text-slate-400 hover:text-blue-400"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-pink-400"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-white"><i data-lucide="github" class="w-4 h-4"></i></a>
+                    </div>
+                </div>
+
+                <!-- Member 3 -->
+                <div class="team-card bg-slate-800/40 p-4 rounded border border-amber-500/20 flex flex-col items-center text-center group hover:bg-slate-800/80">
+                    <img src="./assets/Member3.JPG" alt="Member 3" class="profile-img mb-4 bg-slate-700" onclick="openImageModal(this.src)">
+                    <h3 class="text-white font-bold text-lg mb-1">POLA SAI SUJITH</h3>
+                    <div class="w-full h-[1px] bg-amber-500/30 mb-2"></div>
+                    <p class="text-slate-400 text-xs">2024MCB1309</p>
+                    <p class="text-slate-500 text-[10px] mt-1 hover:text-amber-400 cursor-pointer">Email: 2024mcb1309@iitrpr.ac.in</p>
+                    <div class="social-links flex justify-center space-x-3 w-full">
+                        <a href="#" class="text-slate-400 hover:text-blue-400"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-pink-400"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-white"><i data-lucide="github" class="w-4 h-4"></i></a>
+                    </div>
+                </div>
+
+                <!-- Member 4 -->
+                <div class="team-card bg-slate-800/40 p-4 rounded border border-emerald-500/20 flex flex-col items-center text-center group hover:bg-slate-800/80">
+                    <img src="./assets/Member4.JPG" alt="Member 4" class="profile-img mb-4 bg-slate-700" onclick="openImageModal(this.src)">
+                    <h3 class="text-white font-bold text-lg mb-1">BUKKE BALAJI NAIK</h3>
+                    <div class="w-full h-[1px] bg-emerald-500/30 mb-2"></div>
+                    <p class="text-slate-400 text-xs">2024MCB1290</p>
+                    <p class="text-slate-500 text-[10px] mt-1 hover:text-emerald-400 cursor-pointer">Email: 2024mcb1290@iitrpr.ac.in</p>
+                    <div class="social-links flex justify-center space-x-3 w-full">
+                        <a href="#" class="text-slate-400 hover:text-blue-400"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-pink-400"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-white"><i data-lucide="github" class="w-4 h-4"></i></a>
+                    </div>
+                </div>
+
+                 <!-- Member 5 -->
+                 <div class="team-card bg-slate-800/40 p-4 rounded border border-pink-500/20 flex flex-col items-center text-center group hover:bg-slate-800/80">
+                    <img src="./assets/Member5.JPG" alt="Member 5" class="profile-img mb-4 bg-slate-700" onclick="openImageModal(this.src)">
+                    <h3 class="text-white font-bold text-lg mb-1">JATIN</h3>
+                    <div class="w-full h-[1px] bg-pink-500/30 mb-2"></div>
+                    <p class="text-slate-400 text-xs">2024MCB1296</p>
+                    <p class="text-slate-500 text-[10px] mt-1 hover:text-pink-400 cursor-pointer">Email: 2024mcb1296@iitrpr.ac.in</p>
+                    <div class="social-links flex justify-center space-x-3 w-full">
+                        <a href="#" class="text-slate-400 hover:text-blue-400"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-pink-400"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-slate-400 hover:text-white"><i data-lucide="github" class="w-4 h-4"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD CONTENT  -->
+    <div class="flex-1 flex overflow-hidden p-3 space-x-3">
+        <aside class="w-1/4 flex flex-col space-y-3 overflow-y-auto pr-1">
+            
+            <div onclick="switchTab('A1')" class="system-panel system-card p-3 cursor-pointer hover:border-blue-400 group relative">
+                <div class="absolute right-2 top-2 w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_5px_blue]" id="dot-a1"></div>
+                <h3 class="font-bold text-sm text-white border-b border-blue-500/30 pb-1 mb-1">GATE <span class="text-blue-400">ALPHA</span></h3>
+                <div class="grid grid-cols-2 gap-y-1 gap-x-1 text-[15px] font-mono">
+                    <div class="text-slate-500">RAW: <span class="text-slate-400" id="a1-raw">--</span></div>
+                    <div class="text-slate-500">DIST: <span class="text-slate-400" id="a1-raw-dist">--</span></div>
+                    <div class="text-slate-500">FILT: <span class="text-white font-bold" id="a1-filt">--</span></div>
+                    <div class="text-slate-500">DIST: <span class="text-emerald-400 font-bold" id="a1-filt-dist">--</span></div>
+                    <div class="col-span-2 text-slate-500 border-t border-slate-700/50 pt-1 mt-1">LATENCY: <span class="text-yellow-400" id="a1-lat">--</span> ms</div>
+                </div>
+            </div>
+
+            <div onclick="switchTab('A2')" class="system-panel system-card p-3 cursor-pointer hover:border-purple-400 group relative">
+                <div class="absolute right-2 top-2 w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_5px_purple]" id="dot-a2"></div>
+                <h3 class="font-bold text-sm text-white border-b border-purple-500/30 pb-1 mb-1">GATE <span class="text-purple-400">BETA</span></h3>
+                <div class="grid grid-cols-2 gap-y-1 gap-x-1 text-[15px] font-mono">
+                    <div class="text-slate-500">RAW: <span class="text-slate-400" id="a2-raw">--</span></div>
+                    <div class="text-slate-500">DIST: <span class="text-slate-400" id="a2-raw-dist">--</span></div>
+                    <div class="text-slate-500">FILT: <span class="text-white font-bold" id="a2-filt">--</span></div>
+                    <div class="text-slate-500">DIST: <span class="text-emerald-400 font-bold" id="a2-filt-dist">--</span></div>
+                    <div class="col-span-2 text-slate-500 border-t border-slate-700/50 pt-1 mt-1">LATENCY: <span class="text-yellow-400" id="a2-lat">--</span> ms</div>
+                </div>
+            </div>
+
+            <div onclick="switchTab('A3')" class="system-panel system-card p-3 cursor-pointer hover:border-amber-400 group relative">
+                <div class="absolute right-2 top-2 w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_5px_orange]" id="dot-a3"></div>
+                <h3 class="font-bold text-sm text-white border-b border-amber-500/30 pb-1 mb-1">GATE <span class="text-amber-400">GAMMA</span></h3>
+                <div class="grid grid-cols-2 gap-y-1 gap-x-1 text-[15px] font-mono">
+                    <div class="text-slate-500">RAW: <span class="text-slate-400" id="a3-raw">--</span></div>
+                    <div class="text-slate-500">DIST: <span class="text-slate-400" id="a3-raw-dist">--</span></div>
+                    <div class="text-slate-500">FILT: <span class="text-white font-bold" id="a3-filt">--</span></div>
+                    <div class="text-slate-500">DIST: <span class="text-emerald-400 font-bold" id="a3-filt-dist">--</span></div>
+                    <div class="col-span-2 text-slate-500 border-t border-slate-700/50 pt-1 mt-1">LATENCY: <span class="text-yellow-400" id="a3-lat">--</span> ms</div>
+                </div>
+            </div>
+
+            <div class="system-panel flex-grow flex flex-col items-center justify-center border-t-2 border-blue-600 p-2">
+                <span class="text-[9px] tracking-[0.3em] text-blue-400 mb-2 uppercase">Target Location</span>
+                <div class="flex space-x-6 mb-4 border-b border-blue-500/20 pb-3">
+                    <div class="text-center"><span class="block text-3xl font-bold font-mono text-white" id="pos-x">0.00</span><span class="text-[9px] text-slate-500">X-AXIS</span></div>
+                    <div class="text-center"><span class="block text-3xl font-bold font-mono text-white" id="pos-y">0.00</span><span class="text-[9px] text-slate-500">Y-AXIS</span></div>
+                </div>
+                <div class="w-full grid grid-cols-3 gap-1 text-center">
+                    <div><span class="text-[10px] text-blue-400 block">TO ALPHA</span><span class="font-mono text-sm text-white" id="d-to-a1">0.00m</span></div>
+                    <div><span class="text-[10px] text-purple-400 block">TO BETA</span><span class="font-mono text-sm text-white" id="d-to-a2">0.00m</span></div>
+                    <div><span class="text-[10px] text-amber-400 block">TO GAMMA</span><span class="font-mono text-sm text-white" id="d-to-a3">0.00m</span></div>
+                </div>
+            </div>
+        </aside>
+
+        <main id="map-container" class="w-1/2 system-panel relative flex flex-col p-1 group">
+            <div class="absolute top-3 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
+                <h2 class="text-xs font-bold text-blue-100 flex items-center bg-slate-900/80 px-2 py-1 border border-blue-500/30">
+                    <i data-lucide="scan" class="w-3 h-3 mr-2 text-blue-400"></i> TRIANGULATION MAP
+                </h2>
+                <button id="btn-fullscreen" class="pointer-events-auto bg-slate-900/90 text-blue-400 p-1.5 border border-blue-500/30 hover:text-white hover:bg-blue-600 transition-colors"><i data-lucide="maximize" class="w-4 h-4"></i></button>
+            </div>
+            <div class="flex-grow w-full h-full relative bg-slate-950 flex items-center justify-center" id="canvas-wrapper">
+                <canvas id="localizationMap" class="w-full h-full"></canvas>
+            </div>
+        </main>
+
+        <aside class="w-1/4 flex flex-col space-y-3">
+            <div class="flex space-x-1 bg-slate-900/50 p-1 border border-blue-500/20">
+                <button onclick="switchTab('A1')" id="tab-A1" class="tab-btn flex-1 py-1 text-[12px] font-bold text-blue-300 uppercase active">ALPHA</button>
+                <button onclick="switchTab('A2')" id="tab-A2" class="tab-btn flex-1 py-1 text-[12px] font-bold text-purple-300 uppercase">BETA</button>
+                <button onclick="switchTab('A3')" id="tab-A3" class="tab-btn flex-1 py-1 text-[12px] font-bold text-amber-300 uppercase">GAMMA</button>
+            </div>
+            <div class="system-panel p-2 flex-1 flex flex-col">
+                <div class="flex justify-between items-center mb-1"><h3 class="text-[15px] font-bold text-blue-400 uppercase tracking-widest">Signal Analysis</h3><span id="chart-label" class="text-[9px] text-white bg-blue-900 px-1">ALPHA</span></div>
+                <div class="flex-grow relative w-full h-full"><canvas id="rssiChart"></canvas></div>
+            </div>
+            <div class="system-panel p-2 flex-1 flex flex-col">
+                <h3 class="text-[15px] font-bold text-yellow-500 uppercase tracking-widest mb-1">Link Latency</h3>
+                <div class="flex-grow relative w-full h-full"><canvas id="latencyChart"></canvas></div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Lightbox Element -->
+    <div id="lightbox" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Full size">
+    </div>
+
+    <script>
+        lucide.createIcons();
+        const fmt = (val) => parseFloat(val).toFixed(2);
+        // --- Copy Code Function ---
+        function copyCode(id) {
+        const codeText = document.getElementById(id).innerText;
+        navigator.clipboard.writeText(codeText)
+        .then(() => alert("Code Copied!"))
+        .catch(() => alert("Failed to copy"));
+        }
+
+        // --- 1. MODAL LOGIC (New) ---
+        let scrollInterval;
+        const descContainer = document.getElementById('desc-scroll-container');
+
+        function toggleModal(id, show) {
+            const el = document.getElementById(id);
+            if(show) {
+                el.classList.add('active');
+                // Start auto-scroll only for info modal
+                if(id === 'info-modal') startAutoScroll();
+            } else {
+                el.classList.remove('active');
+                if(id === 'info-modal') stopAutoScroll();
+            }
+        }
+
+        function startAutoScroll() {
+            stopAutoScroll(); // clear any existing
+            // Scroll slowly
+            scrollInterval = setInterval(() => {
+                if(descContainer) {
+                    // If reached bottom, maybe stop or loop? User said "continuous".
+                    // Let's stop if at bottom to avoid jitter, or loop back to top?
+                    // Usually "continuous" for reading means just keep going down.
+                    if(descContainer.scrollTop + descContainer.clientHeight >= descContainer.scrollHeight - 1) {
+                        // stopAutoScroll(); 
+                        // Optional: Loop? descContainer.scrollTop = 0; 
+                    } else {
+                        descContainer.scrollTop += 1; 
+                    }
+                }
+            }, 50); // Speed
+        }
+
+        function stopAutoScroll() {
+            if(scrollInterval) clearInterval(scrollInterval);
+        }
+
+        // Stop scrolling on user interaction
+        if(descContainer) {
+            descContainer.addEventListener('wheel', stopAutoScroll);
+            descContainer.addEventListener('touchmove', stopAutoScroll);
+            descContainer.addEventListener('mousedown', stopAutoScroll);
+        }
+
+        // Config Modal
+        document.getElementById('btn-config').onclick = () => toggleModal('config-modal', true);
+        
+        // Info Modal
+        document.getElementById('btn-open-info').onclick = () => toggleModal('info-modal', true);
+        
+        // Team Modal
+        document.getElementById('btn-open-team').onclick = () => toggleModal('team-modal', true);
+
+        // Close Logic
+        document.querySelectorAll('.btn-close').forEach(btn => {
+            btn.onclick = function() {
+                const modal = this.closest('.modal-overlay');
+                toggleModal(modal.id, false);
+            }
+        });
+
+        // Lightbox Logic (Consolidated)
+        function openImageModal(src) {
+            const modal = document.getElementById('imageModal');
+            const img = document.getElementById('modalImage');
+
+            img.src = src;
+            modal.classList.remove('hidden');
+        }
+
+        function closeImageModal() {
+            document.getElementById('imageModal').classList.add('hidden');
+        }
+
+        // Alias for compatibility if needed, though updated HTML calls openImageModal directly now
+        const openLightbox = openImageModal; 
+        const closeLightbox = closeImageModal;
+
+        // Info Modal Tabs
+        window.showDesc = function(id, tabEl) {
+            // Reset tabs
+            document.querySelectorAll('.desc-tab').forEach(t => t.classList.remove('active'));
+            tabEl.classList.add('active');
+            
+            // Reset Content
+            document.querySelectorAll('.desc-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('desc-' + id).classList.add('active');
+            
+            // Reset scroll to top when switching tabs?
+            if(descContainer) {
+                descContainer.scrollTop = 0;
+                startAutoScroll(); // Restart scrolling on new tab
+            }
+        }
+
+        // --- 2. CONFIG ---
+        const CONFIG = {
+            anchors: {
+                A1: { x: 0, y: 0, color: '#3b82f6' },
+                A2: { x: 10, y: 0, color: '#a855f7' },
+                A3: { x: 5, y: 10, color: '#f59e0b' }
+            },
+            kalman: { R: 0.01, Q: 2.0 },
+            pathLoss: { A: -105, n: 1.9 },
+            view: { mode: 'auto', manualScale: 60 } 
+        };
+
+        const HISTORY = { A1: {raw:[],filt:[],lat:[]}, A2: {raw:[],filt:[],lat:[]}, A3: {raw:[],filt:[],lat:[]} };
+        const MAX_POINTS = 40;
+        let activeTab = 'A1'; 
+        let currentPos = { x: 5, y: 5 };
+        let targetPos = { x: 5, y: 5 };
+        let isMockMode = false;
+        let mockInterval = null;
+        let anchorInputMode = 'coords'; // Start in Coords mode
+
+        // --- 3. MATH CLASSES ---
+        class KalmanFilter {
+            constructor() { this.x = CONFIG.pathLoss.A; this.p = 0; }
+            update(measurement) {
+                const R = CONFIG.kalman.R; const Q = CONFIG.kalman.Q;
+                this.p = this.p + R;
+                const k = this.p / (this.p + Q);
+                this.x = this.x + k * (measurement - this.x);
+                this.p = (1 - k) * this.p;
+                return this.x;
+            }
+        }
+        const filters = { A1: new KalmanFilter(), A2: new KalmanFilter(), A3: new KalmanFilter() };
+
+        function trilaterate(r1, r2, r3) {
+            let p1 = CONFIG.anchors.A1, p2 = CONFIG.anchors.A2, p3 = CONFIG.anchors.A3;
+            let A = 2*p2.x - 2*p1.x, B = 2*p2.y - 2*p1.y;
+            let C = r1*r1 - r2*r2 - p1.x*p1.x + p2.x*p2.x - p1.y*p1.y + p2.y*p2.y;
+            let D = 2*p3.x - 2*p2.x, E = 2*p3.y - 2*p2.y;
+            let F = r2*r2 - r3*r3 - p2.x*p2.x + p3.x*p3.x - p2.y*p2.y + p3.y*p3.y;
+            let x = (C*E - F*B) / (E*A - B*D);
+            let y = (C*D - A*F) / (B*D - A*E);
+            return { x: x || 0, y: y || 0 };
+        }
+
+        // --- 4. CHARTS ---
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.font.family = "'Roboto Mono', monospace";
+        Chart.defaults.font.size = 9;
+        Chart.defaults.borderColor = 'rgba(59, 130, 246, 0.1)';
+        const chartOpts = { 
+            responsive: true, maintainAspectRatio: false, animation: false, 
+            elements: { point: { radius: 0 } }, 
+            scales: { x: { display: false }, y: { grid: { color: '#1e293b' } } }, 
+            plugins: { legend: { labels: { usePointStyle: true, boxWidth: 4 } } } 
+        };
+
+        const rssiChart = new Chart(document.getElementById('rssiChart'), {
+            type: 'line', data: { labels: Array(MAX_POINTS).fill(''), datasets: [{ label: 'FILT', data: [], borderColor: '#fff', borderWidth: 2, tension: 0.3 }, { label: 'RAW', data: [], borderColor: '#64748b', borderWidth: 1, borderDash: [2, 2], tension: 0.1 }] },
+            options: chartOpts
+        });
+        const latencyChart = new Chart(document.getElementById('latencyChart'), {
+            type: 'line', data: { labels: Array(MAX_POINTS).fill(''), datasets: [{ label: 'MS', data: [], borderColor: '#eab308', backgroundColor: 'rgba(234, 179, 8, 0.1)', fill: true }] },
+            options: chartOpts
+        });
+
+        // --- 5. DATA LOGIC ---
+        function processIncomingData(data) {
+            const A = CONFIG.pathLoss.A; const N = CONFIG.pathLoss.n;
+            const calcDist = (rssi) => Math.pow(10, (A - rssi) / (10 * N));
+            const f1 = filters.A1.update(data.A1.rssi);
+            const f2 = filters.A2.update(data.A2.rssi);
+            const f3 = filters.A3.update(data.A3.rssi);
+
+            const rd1 = calcDist(data.A1.rssi), rd2 = calcDist(data.A2.rssi), rd3 = calcDist(data.A3.rssi);
+            const fd1 = calcDist(f1), fd2 = calcDist(f2), fd3 = calcDist(f3);
+
+            updateCard('a1', data.A1.rssi, rd1, f1, fd1, data.A1.lat);
+            updateCard('a2', data.A2.rssi, rd2, f2, fd2, data.A2.lat);
+            updateCard('a3', data.A3.rssi, rd3, f3, fd3, data.A3.lat);
+
+            document.getElementById('d-to-a1').innerText = fmt(fd1) + "m";
+            document.getElementById('d-to-a2').innerText = fmt(fd2) + "m";
+            document.getElementById('d-to-a3').innerText = fmt(fd3) + "m";
+
+            const pos = trilaterate(fd1, fd2, fd3);
+            targetPos = pos;
+            document.getElementById('pos-x').innerText = fmt(pos.x);
+            document.getElementById('pos-y').innerText = fmt(pos.y);
+            
+            pushData(HISTORY.A1, data.A1.rssi, f1, data.A1.lat);
+            pushData(HISTORY.A2, data.A2.rssi, f2, data.A2.lat);
+            pushData(HISTORY.A3, data.A3.rssi, f3, data.A3.lat);
+            renderCharts();
+        }
+
+        function pushData(store, raw, filt, lat) {
+            store.raw.push(raw); if(store.raw.length > MAX_POINTS) store.raw.shift();
+            store.filt.push(filt); if(store.filt.length > MAX_POINTS) store.filt.shift();
+            store.lat.push(lat); if(store.lat.length > MAX_POINTS) store.lat.shift();
+        }
+        function updateCard(id, raw, rawDist, filt, filtDist, lat) {
+            document.getElementById(`${id}-raw`).innerText = fmt(raw);
+            document.getElementById(`${id}-raw-dist`).innerText = fmt(rawDist) + "m";
+            document.getElementById(`${id}-filt`).innerText = fmt(filt);
+            document.getElementById(`${id}-filt-dist`).innerText = fmt(filtDist) + "m";
+            document.getElementById(`${id}-lat`).innerText = fmt(lat);
+        }
+
+        window.switchTab = function(tabID) {
+            activeTab = tabID;
+            ['A1', 'A2', 'A3'].forEach(t => document.getElementById(`tab-${t}`).classList.remove('active'));
+            document.getElementById(`tab-${tabID}`).classList.add('active');
+            document.getElementById('chart-label').innerText = tabID === 'A1' ? 'ALPHA' : tabID === 'A2' ? 'BETA' : 'GAMMA';
+            rssiChart.data.datasets[0].borderColor = tabID === 'A1' ? '#3b82f6' : tabID === 'A2' ? '#a855f7' : '#f59e0b';
+            renderCharts();
+        };
+        function renderCharts() {
+            rssiChart.data.datasets[0].data = HISTORY[activeTab].filt;
+            rssiChart.data.datasets[1].data = HISTORY[activeTab].raw;
+            rssiChart.update();
+            latencyChart.data.datasets[0].data = HISTORY[activeTab].lat;
+            latencyChart.update();
+        }
+
+        // --- 6. CONFIG & LIVE SYNC ---
+        const rangeInput = document.getElementById('cfg-scale-val');
+        const radioAuto = document.getElementById('radio-auto');
+        const radioManual = document.getElementById('radio-manual');
+        const manualControls = document.getElementById('manual-controls');
+        const scaleDisplay = document.getElementById('scale-display');
+        const btnCoords = document.getElementById('mode-coords');
+        const btnDist = document.getElementById('mode-dist');
+        const coordInputs = document.querySelectorAll('.input-coord');
+        const distInputs = document.querySelectorAll('.input-dist');
+
+        radioAuto.onchange = () => { manualControls.classList.add('opacity-50'); rangeInput.disabled = true; scaleDisplay.innerText = "Auto"; };
+        radioManual.onchange = () => { manualControls.classList.remove('opacity-50'); rangeInput.disabled = false; scaleDisplay.innerText = rangeInput.value + "px"; };
+        rangeInput.oninput = () => { scaleDisplay.innerText = rangeInput.value + "px"; };
+
+        // Mode Toggle Logic
+        btnCoords.onclick = () => {
+            anchorInputMode = 'coords';
+            btnCoords.classList.replace('text-slate-400', 'bg-blue-600'); btnCoords.classList.replace('hover:text-white', 'text-white');
+            btnDist.classList.replace('bg-blue-600', 'text-slate-400'); btnDist.classList.replace('text-white', 'hover:text-white');
+            coordInputs.forEach(i => i.disabled = false);
+            distInputs.forEach(i => i.disabled = true);
+        };
+        btnDist.onclick = () => {
+            anchorInputMode = 'dist';
+            btnDist.classList.replace('text-slate-400', 'bg-blue-600'); btnDist.classList.replace('hover:text-white', 'text-white');
+            btnCoords.classList.replace('bg-blue-600', 'text-slate-400'); btnCoords.classList.replace('text-white', 'hover:text-white');
+            distInputs.forEach(i => i.disabled = false);
+            coordInputs.forEach(i => i.disabled = true);
+        };
+
+        // --- LIVE SYNC LOGIC ---
+        coordInputs.forEach(input => {
+            input.addEventListener('input', () => {
+                if(anchorInputMode !== 'coords') return;
+                const x1 = parseFloat(document.getElementById('cfg-a1-x').value)||0;
+                const y1 = parseFloat(document.getElementById('cfg-a1-y').value)||0;
+                const x2 = parseFloat(document.getElementById('cfg-a2-x').value)||0;
+                const y2 = parseFloat(document.getElementById('cfg-a2-y').value)||0;
+                const x3 = parseFloat(document.getElementById('cfg-a3-x').value)||0;
+                const y3 = parseFloat(document.getElementById('cfg-a3-y').value)||0;
+                const d12 = Math.hypot(x2-x1, y2-y1);
+                const d23 = Math.hypot(x3-x2, y3-y2);
+                const d31 = Math.hypot(x1-x3, y1-y3);
+                document.getElementById('d-12').value = fmt(d12);
+                document.getElementById('d-23').value = fmt(d23);
+                document.getElementById('d-31').value = fmt(d31);
+            });
+        });
+
+        distInputs.forEach(input => {
+            input.addEventListener('input', () => {
+                if(anchorInputMode !== 'dist') return;
+                const d12 = parseFloat(document.getElementById('d-12').value)||0;
+                const d23 = parseFloat(document.getElementById('d-23').value)||0;
+                const d31 = parseFloat(document.getElementById('d-31').value)||0;
+                const x = (d12*d12 + d31*d31 - d23*d23) / (2 * d12);
+                const y = Math.sqrt(Math.abs(d31*d31 - x*x));
+                document.getElementById('cfg-a1-x').value = fmt(0);
+                document.getElementById('cfg-a1-y').value = fmt(0);
+                document.getElementById('cfg-a2-x').value = fmt(d12);
+                document.getElementById('cfg-a2-y').value = fmt(0);
+                document.getElementById('cfg-a3-x').value = fmt(x);
+                document.getElementById('cfg-a3-y').value = fmt(y);
+            });
+        });
+
+        // SAVE Button
+        document.getElementById('btn-save-config').onclick = () => {
+            CONFIG.pathLoss.A = parseFloat(document.getElementById('cfg-A').value);
+            CONFIG.pathLoss.n = parseFloat(document.getElementById('cfg-n').value);
+            CONFIG.kalman.R = parseFloat(document.getElementById('cfg-r').value);
+            CONFIG.kalman.Q = parseFloat(document.getElementById('cfg-q').value);
+            
+            CONFIG.anchors.A1.x = parseFloat(document.getElementById('cfg-a1-x').value);
+            CONFIG.anchors.A1.y = parseFloat(document.getElementById('cfg-a1-y').value);
+            CONFIG.anchors.A2.x = parseFloat(document.getElementById('cfg-a2-x').value);
+            CONFIG.anchors.A2.y = parseFloat(document.getElementById('cfg-a2-y').value);
+            CONFIG.anchors.A3.x = parseFloat(document.getElementById('cfg-a3-x').value);
+            CONFIG.anchors.A3.y = parseFloat(document.getElementById('cfg-a3-y').value);
+
+            CONFIG.view.mode = radioAuto.checked ? 'auto' : 'manual';
+            CONFIG.view.manualScale = parseInt(rangeInput.value);
+            resizeCanvas();
+            document.getElementById('config-modal').classList.remove('active');
+        };
+
+        // --- 7. MOCK SIM (WITH JITTER) ---
+        document.getElementById('btn-mock').addEventListener('click', () => {
+            isMockMode = !isMockMode;
+            document.getElementById('btn-mock').innerText = isMockMode ? "SIMULATE: ON" : "SIMULATE: OFF";
+            document.getElementById('btn-mock').classList.toggle('text-blue-400');
+            if(isMockMode) {
+                mockInterval = setInterval(() => {
+                    const t = Date.now()/1000;
+                    const trueA = CONFIG.pathLoss.A; const trueN = CONFIG.pathLoss.n;
+                    const simX = 5 + 4 * Math.sin(t * 0.5);
+                    const simY = 5 + 4 * Math.sin(t * 1.0) * Math.cos(t * 0.5);
+                    const d1 = Math.hypot(simX - CONFIG.anchors.A1.x, simY - CONFIG.anchors.A1.y);
+                    const d2 = Math.hypot(simX - CONFIG.anchors.A2.x, simY - CONFIG.anchors.A2.y);
+                    const d3 = Math.hypot(simX - CONFIG.anchors.A3.x, simY - CONFIG.anchors.A3.y);
+                    const idealRssi = (d) => trueA - (10 * trueN * Math.log10(d));
+                    const gaussian = () => {
+                        let u = 0, v = 0;
+                        while(u === 0) u = Math.random();
+                        while(v === 0) v = Math.random();
+                        return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+                    };
+                    // Jitter: 20ms to 120ms
+                    const lat = () => Math.floor(20 + Math.random() * 100);
+                    processIncomingData({
+                        A1: { rssi: idealRssi(d1) + gaussian() * 2, lat: lat() },
+                        A2: { rssi: idealRssi(d2) + gaussian() * 2, lat: lat() },
+                        A3: { rssi: idealRssi(d3) + gaussian() * 2, lat: lat() }
+                    });
+                }, 100);
+            } else clearInterval(mockInterval);
+        });
+
+        const socket = io('http://localhost:5000'); 
+        socket.on('connect', () => { document.getElementById('status-text').innerText = "ONLINE"; document.getElementById('status-text').classList.replace('text-slate-400', 'text-blue-500'); document.getElementById('status-dot').classList.replace('bg-red-500', 'bg-blue-500'); });
+        socket.on('update', (data) => { if (!isMockMode) processIncomingData(data); });
+
+        // --- 8. DRAWING ---
+        const btnFs = document.getElementById('btn-fullscreen');
+        const mapContainer = document.getElementById('map-container');
+        btnFs.onclick = () => { if (!document.fullscreenElement) mapContainer.requestFullscreen().catch(err => alert(`Error: ${err.message}`)); else document.exitFullscreen(); };
+
+        const canvas = document.getElementById('localizationMap');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('canvas-wrapper');
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = wrapper.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+            canvas.logicalW = rect.width;
+            canvas.logicalH = rect.height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('fullscreenchange', () => setTimeout(resizeCanvas, 100));
+        resizeCanvas();
+
+        function drawMap() {
+            const W = canvas.logicalW;
+            const H = canvas.logicalH;
+            ctx.clearRect(0, 0, W, H);
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+            if (CONFIG.view.mode === 'auto') {
+                Object.values(CONFIG.anchors).forEach(p => {
+                    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+                    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+                });
+                minX = Math.min(minX, currentPos.x); maxX = Math.max(maxX, currentPos.x);
+                minY = Math.min(minY, currentPos.y); maxY = Math.max(maxY, currentPos.y);
+
+                const width = maxX - minX || 10;
+                const height = maxY - minY || 10;
+                const padX = width * 0.05; 
+                const padY = height * 0.05;
+                minX -= padX; maxX += padX; minY -= padY; maxY += padY;
+            } else {
+                minX = currentPos.x - 10; maxX = currentPos.x + 10;
+                minY = currentPos.y - 10; maxY = currentPos.y + 10;
+            }
+
+            let scale;
+            if (CONFIG.view.mode === 'auto') {
+                const totalW = maxX - minX;
+                const totalH = maxY - minY;
+                const canvasRatio = W / H;
+                const contentRatio = totalW / totalH;
+                if (canvasRatio > contentRatio) scale = H / totalH; 
+                else scale = W / totalW;
+            } else {
+                scale = CONFIG.view.manualScale;
+            }
+            
+            const bboxCenterX = (minX + maxX) / 2;
+            const bboxCenterY = (minY + maxY) / 2;
+            
+            const toScreenX = (val) => (W / 2) + (val - bboxCenterX) * scale;
+            const toScreenY = (val) => (H / 2) + (bboxCenterY - val) * scale; 
+
+            ctx.save();
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+            const startGridX = Math.floor(bboxCenterX + (0 - W/2)/scale);
+            const endGridX = Math.ceil(bboxCenterX + (W - W/2)/scale);
+            const startGridY = Math.floor(bboxCenterY - (H - H/2)/scale);
+            const endGridY = Math.ceil(bboxCenterY - (0 - H/2)/scale);
+
+            for(let i = startGridX; i <= endGridX; i++) {
+                ctx.beginPath(); ctx.moveTo(toScreenX(i), 0); ctx.lineTo(toScreenX(i), H); ctx.stroke();
+            }
+            for(let i = startGridY; i <= endGridY; i++) {
+                 const yPos = toScreenY(i);
+                 ctx.beginPath(); ctx.moveTo(0, yPos); ctx.lineTo(W, yPos); ctx.stroke();
+            }
+            
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
+            const originX = toScreenX(0); const originY = toScreenY(0);
+            if(originX > 0 && originX < W) { ctx.beginPath(); ctx.moveTo(originX, 0); ctx.lineTo(originX, H); ctx.stroke(); }
+            if(originY > 0 && originY < H) { ctx.beginPath(); ctx.moveTo(0, originY); ctx.lineTo(W, originY); ctx.stroke(); }
+            ctx.restore();
+
+            Object.entries(CONFIG.anchors).forEach(([name, pos]) => {
+                const cx = toScreenX(pos.x); const cy = toScreenY(pos.y);
+                ctx.shadowBlur = 10; ctx.shadowColor = pos.color; ctx.fillStyle = pos.color;
+                ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx+6, cy); ctx.lineTo(cx, cy+6); ctx.lineTo(cx-6, cy); ctx.fill();
+                ctx.shadowBlur = 0; ctx.fillStyle = "#cbd5e1"; ctx.font = "bold 12px Rajdhani"; ctx.fillText(name, cx+10, cy+4);
+            });
+
+            currentPos.x += (targetPos.x - currentPos.x) * 0.1;
+            currentPos.y += (targetPos.y - currentPos.y) * 0.1;
+            const px = toScreenX(currentPos.x); const py = toScreenY(currentPos.y);
+            ctx.shadowBlur = 20; ctx.shadowColor = '#3b82f6'; ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)'; ctx.beginPath(); ctx.arc(px, py, 10 + Math.sin(Date.now()/200)*2, 0, Math.PI*2); ctx.stroke();
+            
+            ctx.lineWidth = 1; ctx.setLineDash([5,5]);
+            Object.values(CONFIG.anchors).forEach(pos => {
+                ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(toScreenX(pos.x), toScreenY(pos.y)); ctx.stroke();
+            });
+            ctx.setLineDash([]);
+
+            requestAnimationFrame(drawMap);
+        }
+        drawMap();
+    </script>
+    <!-- FULLSCREEN IMAGE MODAL -->
+    <div id="imageModal"
+    class="fixed inset-0 bg-black/80 backdrop-blur-md hidden z-[9999] flex items-center justify-center">
+
+    <!-- Close Button -->
+    <button onclick="closeImageModal()" 
+        class="absolute top-5 right-5 text-white text-3xl font-bold hover:text-red-400">
+        &times;
+    </button>
+
+    <!-- Stop click from closing modal -->
+    <div onclick="event.stopPropagation()">
+        <img id="modalImage"
+            class="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl border border-slate-600">
+    </div>
+</body>
+</html>
