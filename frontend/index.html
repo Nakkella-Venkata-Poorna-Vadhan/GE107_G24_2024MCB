@@ -203,7 +203,7 @@
         <!-- Right: Controls -->
         <div class="flex items-center space-x-4">
             <!-- New Download Report Button -->
-            <a href="./assets/Project Report.pdf" download="Project Report.pdf" class="download-btn px-4 py-1 text-[12px] font-bold tracking-wider bg-slate-800 text-blue-300 border border-blue-500/50 uppercase transition-all flex items-center rounded-sm">
+            <a href="./assets/R_GroupNo_24_LoRa_Localization_with_error_reduction.pdf" download="Project Report.pdf" class="download-btn px-4 py-1 text-[12px] font-bold tracking-wider bg-slate-800 text-blue-300 border border-blue-500/50 uppercase transition-all flex items-center rounded-sm">
                 <i data-lucide="file-down" class="w-4 h-4 mr-2 text-blue-400"></i> Report
             </a>
 
@@ -528,6 +528,9 @@ void loop() {
                     <div id="desc-videos" class="desc-content p-8">
                         <div class="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-40 pb-2 pt-2 -mt-2 mb-4 border-b border-red-500">
                             <h3 class="text-2xl font-bold text-white">Demonstration Videos</h3>
+                            <video controls width="600">
+                                <source src="./assets/V_GroupNo_24.mp4" type="video/mp4">
+                            </video>
                         </div>
                     </div>
                     
@@ -1178,6 +1181,12 @@ void loop() {
             requestAnimationFrame(drawMap);
         }
         drawMap();
+        document.getElementById("videoFile").addEventListener("change", function () {
+        const file = this.files[0];
+        if (file) {
+                document.getElementById("videoPlayer").src = URL.createObjectURL(file);
+            }
+        });
     </script>
     <!-- FULLSCREEN IMAGE MODAL -->
     <div id="imageModal"
@@ -1194,5 +1203,6 @@ void loop() {
         <img id="modalImage"
             class="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl border border-slate-600">
     </div>
+
 </body>
 </html>
