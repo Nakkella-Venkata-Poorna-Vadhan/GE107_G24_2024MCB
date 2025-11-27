@@ -365,21 +365,41 @@
 
                             <pre id="sender-code" class="text-pink-300 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
 /* --- SENDER (ANCHOR) CODE --- */
-#include &lt;SPI.h&gt;
-#include &lt;LoRa.h&gt;
+#include <SPI.h>
+#include <LoRa.h>
+
+// --- CONFIGURATION ---
+// CHANGE THIS for each board: "A1", "A2", or "A3"
+String nodeID = "A1"; 
+
+// --- PIN DEFINITIONS ---
+#define SS_PIN    10
+#define RST_PIN   9
+#define DIO0_PIN  2
 
 void setup() {
-    Serial.begin(9600);
-    LoRa.begin(433E6);           // Frequency 433 MHz
-    LoRa.setTxPower(20);         // Transmission power
-    LoRa.setSpreadingFactor(12); // SF7-SF12
+  Serial.begin(9600);
+  LoRa.setPins(SS_PIN, RST_PIN, DIO0_PIN);
+
+  if (!LoRa.begin(433E6)) { // Must match Receiver frequency
+    Serial.println("LoRa init failed!");
+    while (1);
+  }
+  Serial.println("Sender Ready: " + nodeID);
 }
 
 void loop() {
-    LoRa.beginPacket();
-    LoRa.print("ANCHOR_1");      // Change to ANCHOR_2, ANCHOR_3 for other anchors
-    LoRa.endPacket();
-    delay(1000);                 // Broadcast every 1 second
+  Serial.print("Sending packet: ");
+  Serial.println(nodeID);
+
+  // Send LoRa Packet
+  LoRa.beginPacket();
+  LoRa.print(nodeID);
+  LoRa.endPacket();
+
+  // Wait a random time to avoid collision with other Anchors
+  // (If A1 and A2 send at exact same time, Receiver hears nothing)
+  delay(random(500, 1500));
 }
                             </pre>
                         </div>
@@ -392,63 +412,94 @@ void loop() {
                             </button>
 
                             <pre id="receiver-code" class="text-pink-300 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
-/* --- RECEIVER (MOBILE NODE) CODE --- */
-#include &lt;SPI.h&gt;
-#include &lt;LoRa.h&gt;
+/* --- RECEIVER CODE --- */
+#include <SPI.h>
+#include <LoRa.h>
 
-unsigned long lastReceiveTimeA1 = 0;
-unsigned long lastReceiveTimeA2 = 0;
-unsigned long lastReceiveTimeA3 = 0;
+// --- PIN DEFINITIONS (Check your wiring!) ---
+#define SS_PIN    10
+#define RST_PIN   9
+#define DIO0_PIN  2
 
-int rssiA1 = 0, rssiA2 = 0, rssiA3 = 0;
-int latA1 = 0, latA2 = 0, latA3 = 0;
+// Storage for the 3 Anchors
+int rssi_A1 = 0, lat_A1 = 0;
+int rssi_A2 = 0, lat_A2 = 0;
+int rssi_A3 = 0, lat_A3 = 0;
 
-bool gotA1 = false, gotA2 = false, gotA3 = false;
+unsigned long lastPrintTime = 0;
 
 void setup() {
-    Serial.begin(9600);
-    LoRa.begin(433E6);
+  Serial.begin(9600); // Must match BAUD_RATE in server.py
+  while (!Serial);
+
+  LoRa.setPins(SS_PIN, RST_PIN, DIO0_PIN);
+
+  if (!LoRa.begin(433E6)) { // Change to 915E6 or 868E6 depending on your module
+    Serial.println("Error: LoRa init failed. Check wiring.");
+    while (1);
+  }
 }
 
 void loop() {
-    int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-        String id = LoRa.readString();
-        int rssi = LoRa.packetRssi();
-        unsigned long now = millis();
-
-        if (id == "ANCHOR_1") {
-            rssiA1 = rssi;
-            latA1 = now - lastReceiveTimeA1;
-            lastReceiveTimeA1 = now;
-            gotA1 = true;
-        }
-        else if (id == "ANCHOR_2") {
-            rssiA2 = rssi;
-            latA2 = now - lastReceiveTimeA2;
-            lastReceiveTimeA2 = now;
-            gotA2 = true;
-        }
-        else if (id == "ANCHOR_3") {
-            rssiA3 = rssi;
-            latA3 = now - lastReceiveTimeA3;
-            lastReceiveTimeA3 = now;
-            gotA3 = true;
-        }
-
-        // When all 3 anchors received, output combined JSON line
-        if (gotA1 && gotA2 && gotA3) {
-            Serial.print("JSON_DATA:");
-            Serial.print(rssiA1); Serial.print(":");
-            Serial.print(latA1);  Serial.print(":");
-            Serial.print(rssiA2); Serial.print(":");
-            Serial.print(latA2);  Serial.print(":");
-            Serial.print(rssiA3); Serial.print(":");
-            Serial.println(latA3);
-
-            gotA1 = gotA2 = gotA3 = false;
-        }
+  // 1. Try to parse packet
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    String incoming = "";
+    while (LoRa.available()) {
+      incoming += (char)LoRa.read();
     }
+    
+    int currentRSSI = LoRa.packetRssi();
+    
+    // 2. Identify which Anchor sent the data
+    if (incoming == "A1") {
+      rssi_A1 = currentRSSI;
+      lat_A1 = calculateFakeLatency(currentRSSI); 
+    } 
+    else if (incoming == "A2") {
+      rssi_A2 = currentRSSI;
+      lat_A2 = calculateFakeLatency(currentRSSI);
+    } 
+    else if (incoming == "A3") {
+      rssi_A3 = currentRSSI;
+      lat_A3 = calculateFakeLatency(currentRSSI);
+    }
+  }
+
+  // 3. Send data to Python every 100ms (prevents spamming Serial)
+  if (millis() - lastPrintTime > 100) {
+    sendToPython();
+    lastPrintTime = millis();
+  }
+}
+
+// Formats the string exactly as server.py expects:
+// "JSON_DATA:r1:l1:r2:l2:r3:l3"
+void sendToPython() {
+  Serial.print("JSON_DATA:");
+  
+  // Anchor 1
+  Serial.print(rssi_A1); Serial.print(":");
+  Serial.print(lat_A1); Serial.print(":");
+  
+  // Anchor 2
+  Serial.print(rssi_A2); Serial.print(":");
+  Serial.print(lat_A2); Serial.print(":");
+  
+  // Anchor 3
+  Serial.print(rssi_A3); Serial.print(":");
+  Serial.print(lat_A3); 
+  
+  Serial.println(); // End line is crucial for ser.readline()
+}
+
+// Helper: Real latency is hard to measure without clock sync.
+// We simulate it based on signal strength (weaker signal = higher latency)
+int calculateFakeLatency(int rssi) {
+  // Map RSSI (-120 to -40) to Latency (100ms to 5ms)
+  int val = map(rssi, -120, -40, 100, 5);
+  if (val < 0) val = 0;
+  return val;
 }
                             </pre>
                         </div>
